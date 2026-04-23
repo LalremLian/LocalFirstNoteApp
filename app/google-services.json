@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "213151583910",
+    "project_id": "localfisrtnoteapp",
+    "storage_bucket": "localfisrtnoteapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:213151583910:android:0d45b5fd39c3561a9c2e67",
+        "android_client_info": {
+          "package_name": "com.lalrem.noteapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDfYl-rRnIPfZsthmZYfWdB6sqxhZxmYkU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

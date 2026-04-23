@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NoteApp" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Main system color customization. -->
+        <item name="colorPrimary">@color/purple_500</item>
+        <item name="android:statusBarColor">#FF6200EE</item>
+    </style>
+
+    <color name="purple_500">#FF6200EE</color>
+</resources>
