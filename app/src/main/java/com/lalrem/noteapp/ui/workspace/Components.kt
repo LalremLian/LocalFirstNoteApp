@@ -328,6 +328,7 @@ fun NoteSelectorSheet(
     availableNotes: List<Note>,
     openNoteIds: List<String>,
     inputBuffer: String,
+    showWorkspaceNotes: Boolean = true,
     onBufferChange: (String) -> Unit,
     onNoteSelect: (Note) -> Unit,
     onAdd: (String) -> Unit
@@ -335,12 +336,12 @@ fun NoteSelectorSheet(
     Column(
         modifier = Modifier.fillMaxWidth().padding(24.dp).navigationBarsPadding().imePadding()
     ) {
-        Text("Open a Note", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(if (showWorkspaceNotes) "Open a Note" else "Create New Note", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
 
         // Show existing notes not already in tabs
         val selectable = availableNotes.filter { !openNoteIds.contains(it.id) }
-        if (selectable.isNotEmpty()) {
+        if (showWorkspaceNotes && selectable.isNotEmpty()) {
             Text("From Workspace", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
             LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
                 items(selectable) { note ->
@@ -375,55 +376,94 @@ fun NoteSelectorSheet(
     }
 }
 
+enum class DropIndicatorType {
+    NONE, TOP, BOTTOM
+}
+
 @Composable
 fun NoteCard(
     note: Note,
     modifier: Modifier = Modifier,
+    dragHandleModifier: Modifier = Modifier,
+    dropIndicator: DropIndicatorType = DropIndicatorType.NONE,
     onTap: () -> Unit,
     onDelete: () -> Unit,
     onRotationUpdate: (String, Float) -> Unit
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth().clickable { onTap() },
-        color = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
-        shape = RoundedCornerShape(20.dp),
-        border = if (note.isDirty) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Text(
-                    text = note.content,
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+    Column(modifier = modifier) {
+        if (dropIndicator == DropIndicatorType.TOP) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                    .padding(bottom = 2.dp)
+            )
+        }
+        
+        Surface(
+            modifier = Modifier.fillMaxWidth().clickable { onTap() },
+            color = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
+            shape = RoundedCornerShape(20.dp),
+            border = if (note.isDirty) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Menu,
+                    contentDescription = "Drag to reorder",
+                    modifier = Modifier
+                        .padding(start = 12.dp)
+                        .size(24.dp)
+                        .then(dragHandleModifier),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                 )
+                Column(modifier = Modifier.padding(16.dp).weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = note.content,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
 
-                IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                        IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = SimpleDateFormat("dd/MM/yyyy h:mma", Locale.getDefault()).format(note.timestamp),
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                        if (note.isDirty) {
+                            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+                        }
+                    }
                 }
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(note.timestamp),
-                    fontSize = 11.sp,
-                    color = Color.Gray
-                )
-                if (note.isDirty) {
-                    CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
-                }
-            }
+        }
+        
+        if (dropIndicator == DropIndicatorType.BOTTOM) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                    .padding(top = 2.dp)
+            )
         }
     }
 }

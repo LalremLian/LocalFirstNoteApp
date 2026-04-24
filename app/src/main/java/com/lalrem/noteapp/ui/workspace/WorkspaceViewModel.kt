@@ -177,4 +177,28 @@ class WorkspaceViewModel @Inject constructor(
             }
         }
     }
+
+    fun moveNote(fromIndex: Int, toIndex: Int) {
+        val currentNotes = notes.value.toMutableList()
+        if (fromIndex !in currentNotes.indices || toIndex !in currentNotes.indices) return
+        
+        val note = currentNotes.removeAt(fromIndex)
+        currentNotes.add(toIndex, note)
+        
+        // Calculate new orderIndex
+        // The notes are ordered by orderIndex DESC
+        val newOrderIndex = if (currentNotes.size == 1) {
+            currentNotes[0].orderIndex
+        } else if (toIndex == 0) {
+            currentNotes[1].orderIndex + 1.0
+        } else if (toIndex == currentNotes.size - 1) {
+            currentNotes[toIndex - 1].orderIndex - 1.0
+        } else {
+            (currentNotes[toIndex - 1].orderIndex + currentNotes[toIndex + 1].orderIndex) / 2.0
+        }
+        
+        viewModelScope.launch {
+            repository.updateNoteOrder(note.id, newOrderIndex)
+        }
+    }
 }
