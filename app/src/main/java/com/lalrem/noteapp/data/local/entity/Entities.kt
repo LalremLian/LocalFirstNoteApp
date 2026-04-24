@@ -35,7 +35,6 @@ data class AssetEntity(
     val posY: Float
 )
 
-// Extension to map to domain
 fun NoteEntity.toDomain(assets: List<Asset>): Note = Note(
     id = id,
     content = content,

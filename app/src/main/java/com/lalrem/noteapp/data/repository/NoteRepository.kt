@@ -74,7 +74,7 @@ class NoteRepository @Inject constructor(
     val notes: Flow<List<Note>> = noteDao.getNotesWithAssets().map { list ->
         list.map { noteWithAssets ->
             val domainAssets = noteWithAssets.assets.map { 
-                com.lalrem.noteapp.domain.model.Asset(
+                Asset(
                     it.id, it.noteId, it.url, it.rotationDegrees, it.posX, it.posY
                 )
             }
@@ -174,13 +174,12 @@ class NoteRepository @Inject constructor(
         try {
             val inputStream = app.contentResolver.openInputStream(uri) ?: return@withContext null
             val originalBitmap = android.graphics.BitmapFactory.decodeStream(inputStream) ?: return@withContext null
-            
-            // Scale down to prevent exceeding DB/Firestore limits
+
             val maxDim = 800
             val width = originalBitmap.width
             val height = originalBitmap.height
             val scale = if (width > maxDim || height > maxDim) {
-                maxDim.toFloat() / Math.max(width, height)
+                maxDim.toFloat() / width.coerceAtLeast(height)
             } else 1f
             
             val scaledBitmap = if (scale < 1f) {

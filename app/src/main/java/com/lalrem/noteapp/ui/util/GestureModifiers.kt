@@ -1,5 +1,6 @@
 package com.lalrem.noteapp.ui.util
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.Modifier
@@ -9,12 +10,7 @@ import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.atan2
 
-/**
- * Custom Modifier for 3-finger rotation:
- * Finger 1: Anchor/Focus
- * Finger 2: Rotation handle (relative to Finger 1)
- * Finger 3: HUD Trigger
- */
+@SuppressLint("ModifierFactoryUnreferencedReceiver")
 fun Modifier.threeFingerRotation(
     onRotationChanged: (Float) -> Unit,
     onHudVisibilityChanged: (Boolean) -> Unit
