@@ -1,5 +1,6 @@
 package com.lalrem.noteapp.ui.workspace
 
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -140,6 +141,40 @@ class WorkspaceViewModel @Inject constructor(
             }
             val updatedNote = note.copy(assets = updatedAssets)
             repository.updateNote(updatedNote)
+        }
+    }
+
+    fun handleAssetDrop(noteId: String?, uri: Uri) {
+        viewModelScope.launch {
+            val base64Data = repository.saveImageAsBase64(uri)
+            
+            if (noteId != null) {
+                // Add to existing note
+                val note = notes.value.find { it.id == noteId } ?: return@launch
+                if (base64Data != null) {
+                    val newAsset = Asset(UUID.randomUUID().toString(), noteId, base64Data)
+                    repository.updateNote(note.copy(assets = note.assets + newAsset))
+                } else {
+                    repository.updateNote(note.copy(content = note.content + "\n[Failed to add image]"))
+                }
+            } else {
+                // Create new note for the asset
+                val id = UUID.randomUUID().toString()
+                val asset = if (base64Data != null) {
+                    listOf(Asset(UUID.randomUUID().toString(), id, base64Data))
+                } else emptyList()
+                
+                val newNote = Note(
+                    id = id,
+                    content = if (base64Data != null) "Image Note" else "Failed to load image",
+                    timestamp = System.currentTimeMillis(),
+                    orderIndex = (notes.value.firstOrNull()?.orderIndex ?: 0.0) + 1.0,
+                    version = 1,
+                    assets = asset
+                )
+                repository.updateNote(newNote)
+                openNote(id)
+            }
         }
     }
 }

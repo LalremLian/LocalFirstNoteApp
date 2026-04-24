@@ -41,10 +41,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
 import coil.compose.AsyncImage
+import android.view.DragEvent
+import android.view.View
+import androidx.compose.ui.platform.LocalView
 import com.lalrem.noteapp.domain.model.Asset
 import com.lalrem.noteapp.domain.model.Note
 import com.lalrem.noteapp.ui.util.threeFingerRotation
+import android.net.Uri
+import androidx.compose.ui.composed
+import android.app.Activity
+import android.util.Log
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -137,7 +147,14 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel) {
                 }
             }
         ) { padding ->
-            Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .assetDropTarget(selectedNoteId) { id, uri -> 
+                        viewModel.handleAssetDrop(id, uri) 
+                    }
+            ) {
                 if (selectedNoteId != null) {
                     val selectedNote = notes.find { it.id == selectedNoteId }
                     val drafts by viewModel.drafts.collectAsState()
@@ -146,6 +163,7 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel) {
                         EditNoteScreen(
                             note = note,
                             initialContent = initialDraft,
+                            viewModel = viewModel,
                             onDismiss = { viewModel.closeNote(note.id) },
                             onContentChange = { viewModel.updateDraft(note.id, it) },
                             onSave = { newContent ->
@@ -246,6 +264,7 @@ fun BrowserTab(
 fun EditNoteScreen(
     note: Note,
     initialContent: String,
+    viewModel: WorkspaceViewModel,
     onDismiss: () -> Unit,
     onContentChange: (String) -> Unit,
     onSave: (String) -> Unit
@@ -286,8 +305,28 @@ fun EditNoteScreen(
             }
         ) { padding ->
             Column(
-                modifier = Modifier.padding(padding).fillMaxSize().padding(24.dp)
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .padding(24.dp)
             ) {
+                // Show assets in the editor
+                if (note.assets.isNotEmpty()) {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(note.assets) { asset ->
+                            AssetView(
+                                asset = asset,
+                                onRotationUpdate = { assetId, degrees ->
+                                    viewModel.updateAssetRotation(note, assetId, degrees)
+                                }
+                            )
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = content,
                     onValueChange = { 
@@ -436,6 +475,21 @@ fun AssetView(
     var hudVisible by remember { mutableStateOf(false) }
     var currentRotation by remember { mutableStateOf(asset.rotationDegrees) }
 
+    val imageBitmap = remember(asset.url) {
+        if (asset.url.startsWith("data:")) {
+            try {
+                val base64Data = asset.url.substringAfter("base64,", "")
+                val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            } catch (e: Exception) {
+                Log.e("AssetView", "Failed to decode Base64 image", e)
+                null
+            }
+        } else {
+            null
+        }
+    }
+
     Box(
         modifier = Modifier
             .size(100.dp)
@@ -450,12 +504,24 @@ fun AssetView(
             .background(Color.LightGray, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
-        AsyncImage(
-            model = asset.url,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
+
+        if (imageBitmap != null) {
+            Image(
+                bitmap = imageBitmap,
+                contentDescription = "Note Image",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            AsyncImage(
+                model = asset.url,
+                contentDescription = "Note Image",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                error = painterResource(android.R.drawable.ic_menu_report_image),
+                placeholder = painterResource(android.R.drawable.ic_menu_gallery)
+            )
+        }
 
         if (hudVisible) {
             Box(
@@ -473,4 +539,38 @@ fun AssetView(
             }
         }
     }
+}
+
+@Composable
+fun Modifier.assetDropTarget(
+    noteId: String?,
+    onDrop: (String?, Uri) -> Unit
+): Modifier = composed {
+    val view = LocalView.current
+    val context = LocalContext.current
+    val activity = context as? Activity
+
+    // Update the listener whenever the noteId (selected tab) changes
+    LaunchedEffect(view, noteId) {
+        view.setOnDragListener { v, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_STARTED -> {
+                    // Accept the drag if it contains a URI
+                    true
+                }
+                DragEvent.ACTION_DROP -> {
+                    activity?.requestDragAndDropPermissions(event)
+                    val uri = event.clipData?.getItemAt(0)?.uri
+                    if (uri != null) {
+                        onDrop(noteId, uri)
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> true
+            }
+        }
+    }
+    this
 }

@@ -20,7 +20,7 @@ interface NoteDao {
     @Transaction
     suspend fun upsertNoteWithAssets(note: NoteEntity, assets: List<AssetEntity>) {
         insertNote(note)
-        // Clean old assets if necessary or just replace
+        deleteAssetsForNote(note.id)
         assets.forEach { insertAsset(it) }
     }
 
@@ -35,4 +35,11 @@ interface NoteDao {
 
     @Query("SELECT * FROM notes WHERE id = :id")
     suspend fun getNoteById(id: String): NoteEntity?
+
+    @Transaction
+    @Query("SELECT * FROM notes WHERE id = :id")
+    suspend fun getNoteWithAssetsById(id: String): com.lalrem.noteapp.data.local.entity.NoteWithAssets?
+
+    @Query("DELETE FROM assets WHERE noteId = :noteId")
+    suspend fun deleteAssetsForNote(noteId: String)
 }
