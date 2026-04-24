@@ -8,6 +8,7 @@ import com.lalrem.noteapp.data.local.entity.AssetEntity
 import com.lalrem.noteapp.data.local.entity.NoteEntity
 import com.lalrem.noteapp.data.local.entity.toDomain
 import com.lalrem.noteapp.data.remote.FirebaseSync
+import com.lalrem.noteapp.data.util.ProtectionManager
 import com.lalrem.noteapp.domain.model.Asset
 import com.lalrem.noteapp.domain.model.Note
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +29,7 @@ import javax.inject.Singleton
 class NoteRepository @Inject constructor(
     private val noteDao: NoteDao,
     private val firebaseSync: FirebaseSync,
+    private val protectionManager: ProtectionManager,
     private val externalScope: CoroutineScope,
     private val app: Application
 ) {
@@ -75,10 +77,11 @@ class NoteRepository @Inject constructor(
         list.map { noteWithAssets ->
             val domainAssets = noteWithAssets.assets.map { 
                 Asset(
-                    it.id, it.noteId, it.url, it.rotationDegrees, it.posX, it.posY
+                    it.id, it.noteId, protectionManager.decrypt(it.url), it.rotationDegrees, it.posX, it.posY
                 )
             }
-            noteWithAssets.note.toDomain(domainAssets)
+            val domainNote = noteWithAssets.note.toDomain(domainAssets)
+            domainNote.copy(content = protectionManager.decrypt(domainNote.content))
         }
     }
 
@@ -113,15 +116,24 @@ class NoteRepository @Inject constructor(
     }
 
     suspend fun updateNote(note: Note) {
-        val entity = NoteEntity(note.id, note.content, note.timestamp, note.orderIndex, true, note.version + 1)
-        val assets = note.assets.map { 
+        val encryptedContent = protectionManager.encrypt(note.content)
+        val encryptedAssets = note.assets.map {
+            it.copy(url = protectionManager.encrypt(it.url))
+        }
+        
+        val entity = NoteEntity(note.id, encryptedContent, note.timestamp, note.orderIndex, true, note.version + 1)
+        val assets = encryptedAssets.map { 
             AssetEntity(it.id, it.noteId, it.url, it.rotationDegrees, it.posX, it.posY)
         }
         noteDao.upsertNoteWithAssets(entity, assets)
         
         // Push to Firebase
         try {
-            firebaseSync.pushNote(note.copy(version = note.version + 1))
+            firebaseSync.pushNote(note.copy(
+                content = encryptedContent, 
+                version = note.version + 1,
+                assets = encryptedAssets
+            ))
             noteDao.upsertNoteWithAssets(entity.copy(isDirty = false), assets)
         } catch (e: Exception) {
             // Stay dirty, retry later
@@ -131,22 +143,24 @@ class NoteRepository @Inject constructor(
     suspend fun updateNoteOrder(noteId: String, newOrderIndex: Double) {
         val entity = noteDao.getNoteById(noteId) ?: return
         val updated = entity.copy(orderIndex = newOrderIndex, isDirty = true, version = entity.version + 1)
-        val noteWithAssets = notes.firstOrNull()?.find { it.id == noteId }
-        val assets = noteWithAssets?.assets?.map { 
-            AssetEntity(it.id, it.noteId, it.url, it.rotationDegrees, it.posX, it.posY)
-        } ?: emptyList()
-        noteDao.upsertNoteWithAssets(updated, assets)
+        val noteWithAssets = noteDao.getNoteWithAssetsById(noteId) ?: return
+        
+        noteDao.upsertNoteWithAssets(updated, noteWithAssets.assets)
 
         try {
-            // Collect the current value of the Flow
-            val note = notes.firstOrNull()?.find { it.id == noteId }?.copy(orderIndex = newOrderIndex, version = updated.version)
-            if (note != null) {
-                firebaseSync.pushNote(note)
-                val assets = note.assets.map { 
-                    AssetEntity(it.id, it.noteId, it.url, it.rotationDegrees, it.posX, it.posY)
-                }
-                noteDao.upsertNoteWithAssets(updated.copy(isDirty = false), assets)
+            val domainAssets = noteWithAssets.assets.map { 
+                Asset(it.id, it.noteId, it.url, it.rotationDegrees, it.posX, it.posY)
             }
+            val noteToPush = Note(
+                id = noteId,
+                content = updated.content,
+                timestamp = updated.timestamp,
+                orderIndex = updated.orderIndex,
+                version = updated.version,
+                assets = domainAssets
+            )
+            firebaseSync.pushNote(noteToPush)
+            noteDao.upsertNoteWithAssets(updated.copy(isDirty = false), noteWithAssets.assets)
         } catch (e: Exception) {
             // Stay dirty
         }
@@ -163,6 +177,10 @@ class NoteRepository @Inject constructor(
     }
 
     private suspend fun saveToLocal(note: Note, isDirty: Boolean) {
+        // The content from remote might already be encrypted if pushed from another device
+        // But for consistency, we treat the domain Note content as the ground truth.
+        // If we want E2EE, we should NOT decrypt before pushing, and NOT encrypt after pulling.
+        // Currently, updateNote encrypts before pushing. So reconcile gets encrypted notes.
         val entity = NoteEntity(note.id, note.content, note.timestamp, note.orderIndex, isDirty, note.version)
         val assets = note.assets.map { 
             AssetEntity(it.id, it.noteId, it.url, it.rotationDegrees, it.posX, it.posY)
