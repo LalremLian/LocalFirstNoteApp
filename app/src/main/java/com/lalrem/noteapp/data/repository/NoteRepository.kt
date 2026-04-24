@@ -14,6 +14,8 @@ import com.lalrem.noteapp.domain.model.Note
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
@@ -35,43 +37,57 @@ class NoteRepository @Inject constructor(
 ) {
     private val prefs = app.getSharedPreferences("workspace_session", Context.MODE_PRIVATE)
 
+    private val _openNoteIds = MutableStateFlow(getSessionFromPrefs().first)
+    val openNoteIds: StateFlow<List<String>> = _openNoteIds
+
+    private val _selectedNoteId = MutableStateFlow(getSessionFromPrefs().second)
+    val selectedNoteId: StateFlow<String?> = _selectedNoteId
+
+    private val _drafts = MutableStateFlow(getDraftsFromPrefs())
+    val drafts: StateFlow<Map<String, String>> = _drafts
+
     fun saveSession(openIds: List<String>, selectedId: String?) {
         prefs.edit().apply {
             putString("open_ids", openIds.joinToString(","))
             putString("selected_id", selectedId)
             apply()
         }
+        _openNoteIds.value = openIds
+        _selectedNoteId.value = selectedId
     }
 
-    fun getSession(): Pair<List<String>, String?> {
+    private fun getSessionFromPrefs(): Pair<List<String>, String?> {
         val ids = prefs.getString("open_ids", "")?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
         val selected = prefs.getString("selected_id", null)
         return ids to selected
     }
 
+    fun getSession(): Pair<List<String>, String?> = getSessionFromPrefs()
+
     fun saveDrafts(drafts: Map<String, String>) {
         val editor = prefs.edit()
-        // Save all current drafts
         drafts.forEach { (id, content) ->
             editor.putString("draft_$id", content)
         }
-        // Save keys list to know what to clean up or load
         editor.putString("draft_keys", drafts.keys.joinToString(","))
         editor.apply()
+        _drafts.value = drafts
     }
 
-    fun getDrafts(): Map<String, String> {
+    private fun getDraftsFromPrefs(): Map<String, String> {
         val keys = prefs.getString("draft_keys", "")?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
         return keys.associateWith { id -> 
             prefs.getString("draft_$id", "") ?: ""
         }
     }
 
+    fun getDrafts(): Map<String, String> = getDraftsFromPrefs()
+
     fun clearDraft(noteId: String) {
         prefs.edit().remove("draft_$noteId").apply()
-        // Also update draft_keys list
         val currentKeys = prefs.getString("draft_keys", "")?.split(",")?.filter { it != noteId } ?: emptyList()
         prefs.edit().putString("draft_keys", currentKeys.joinToString(",")).apply()
+        _drafts.value = _drafts.value.toMutableMap().apply { remove(noteId) }
     }
     val notes: Flow<List<Note>> = noteDao.getNotesWithAssets().map { list ->
         list.map { noteWithAssets ->

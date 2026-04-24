@@ -1,5 +1,6 @@
 package com.lalrem.noteapp.ui.workspace
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -48,15 +49,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WorkspaceScreen(viewModel: WorkspaceViewModel) {
+fun WorkspaceScreen(viewModel: WorkspaceViewModel, navController: NavController) {
     val notes by viewModel.notes.collectAsState()
     val openNoteIds by viewModel.openNoteIds.collectAsState()
-    val selectedNoteId by viewModel.selectedNoteId.collectAsState()
     val inputBuffer by viewModel.inputBuffer.collectAsState()
-    val hasUnsavedChanges by viewModel.hasUnsavedChanges.collectAsState()
     var showAddSheet by remember { mutableStateOf(false) }
     
     val gridState = rememberLazyGridState()
@@ -78,78 +78,25 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel) {
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
-                Column(modifier = Modifier.statusBarsPadding()) {
-                    if (selectedNoteId == null) {
-                        LargeTopAppBar(
-                            title = { 
-                                Column {
-                                    Text("Local First Note App", fontWeight = FontWeight.ExtraBold)
-                                }
-                            },
-                            colors = TopAppBarDefaults.largeTopAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.background
-                            )
-                        )
-                    }
-                    
-                    // Browser-Style Tab Bar - Fixed at top
-                    if (openNoteIds.isNotEmpty()) {
-                        Row(
-                            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            LazyRow(
-                                modifier = Modifier.weight(1f).height(48.dp),
-                                verticalAlignment = Alignment.Bottom
-                            ) {
-                                items(openNoteIds) { noteId ->
-                                    val note = notes.find { it.id == noteId }
-                                    BrowserTab(
-                                        title = note?.content?.take(15) ?: "Note",
-                                        isSelected = selectedNoteId == noteId,
-                                        onClick = { 
-                                            // BLOCK switching if unsaved
-                                            if (!hasUnsavedChanges || selectedNoteId == noteId) {
-                                                viewModel.selectNote(noteId) 
-                                            }
-                                        },
-                                        onClose = { 
-                                            // BLOCK closing current tab if unsaved
-                                            if (!hasUnsavedChanges || selectedNoteId != noteId) {
-                                                viewModel.closeNote(noteId) 
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                            
-                            IconButton(
-                                // BLOCK opening new selector if unsaved
-                                onClick = { if (!hasUnsavedChanges) showAddSheet = true }, 
-                                enabled = !hasUnsavedChanges,
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Add, 
-                                    "Open/New Note",
-                                    tint = if (hasUnsavedChanges) Color.Gray.copy(alpha = 0.5f) else LocalContentColor.current
-                                )
-                            }
+                LargeTopAppBar(
+                    title = { 
+                        Column {
+                            Text("Local First Note App", fontWeight = FontWeight.ExtraBold)
                         }
-                        Divider(color = MaterialTheme.colorScheme.outlineVariant)
-                    }
-                }
+                    },
+                    colors = TopAppBarDefaults.largeTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
+                )
             },
             floatingActionButton = {
-                if (openNoteIds.isEmpty()) {
-                    LargeFloatingActionButton(
-                        onClick = { showAddSheet = true },
-                        modifier = Modifier.size(54.dp),
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Note", Modifier.size(32.dp))
-                    }
+                LargeFloatingActionButton(
+                    onClick = { showAddSheet = true },
+                    modifier = Modifier.size(54.dp),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Note", Modifier.size(32.dp))
                 }
             }
         ) { padding ->
@@ -157,27 +104,12 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel) {
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize()
-                    .assetDropTarget(selectedNoteId) { id, uri -> 
-                        viewModel.handleAssetDrop(id, uri) 
+                    .assetDropTarget(null) { _, uri -> 
+                        viewModel.handleAssetDrop(null, uri)
+                        navController.navigate("edit")
                     }
             ) {
-                if (selectedNoteId != null) {
-                    val selectedNote = notes.find { it.id == selectedNoteId }
-                    val drafts by viewModel.drafts.collectAsState()
-                    selectedNote?.let { note ->
-                        val initialDraft = drafts[note.id] ?: note.content
-                        EditNoteScreen(
-                            note = note,
-                            initialContent = initialDraft,
-                            viewModel = viewModel,
-                            onDismiss = { viewModel.closeNote(note.id) },
-                            onContentChange = { viewModel.updateDraft(note.id, it) },
-                            onSave = { newContent ->
-                                viewModel.updateNoteContent(note, newContent)
-                            }
-                        )
-                    }
-                } else if (notes.isEmpty()) {
+                if (notes.isEmpty()) {
                     EmptyWorkspacePrompt()
                 } else {
                     LazyVerticalGrid(
@@ -272,7 +204,10 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel) {
                                         }
                                     )
                                 },
-                                onTap = { viewModel.openNote(note.id) },
+                                onTap = { 
+                                    viewModel.openNote(note.id)
+                                    navController.navigate("edit")
+                                },
                                 onDelete = { viewModel.deleteNote(note.id) },
                                 onRotationUpdate = { assetId, degrees -> 
                                     viewModel.updateAssetRotation(note, assetId, degrees) 
@@ -293,15 +228,17 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel) {
                         availableNotes = notes,
                         openNoteIds = openNoteIds,
                         inputBuffer = inputBuffer,
-                        showWorkspaceNotes = selectedNoteId != null,
+                        showWorkspaceNotes = false, // Only show "Create New"
                         onBufferChange = { viewModel.updateInputBuffer(it) },
                         onNoteSelect = { 
                             viewModel.openNote(it.id)
                             showAddSheet = false
+                            navController.navigate("edit")
                         },
                         onAdd = { 
                             viewModel.addNote(it)
                             showAddSheet = false 
+                            navController.navigate("edit")
                         }
                     )
                 }

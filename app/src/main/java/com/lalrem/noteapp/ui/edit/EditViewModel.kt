@@ -1,7 +1,6 @@
-package com.lalrem.noteapp.ui.workspace
+package com.lalrem.noteapp.ui.edit
 
 import android.net.Uri
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lalrem.noteapp.data.repository.NoteRepository
@@ -14,26 +13,29 @@ import java.util.*
 import javax.inject.Inject
 
 @HiltViewModel
-class WorkspaceViewModel @Inject constructor(
-    private val repository: NoteRepository,
-    private val savedStateHandle: SavedStateHandle
+class EditViewModel @Inject constructor(
+    private val repository: NoteRepository
 ) : ViewModel() {
-
-    private val _inputBuffer = savedStateHandle.getStateFlow("input_buffer", "")
-    val inputBuffer = _inputBuffer
 
     val notes: StateFlow<List<Note>> = repository.notes
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val openNoteIds: StateFlow<List<String>> = repository.openNoteIds
     val selectedNoteId: StateFlow<String?> = repository.selectedNoteId
+    val drafts: StateFlow<Map<String, String>> = repository.drafts
 
-    fun updateInputBuffer(text: String) {
-        savedStateHandle["input_buffer"] = text
-    }
+    val inputBuffer = repository.openNoteIds.map { "" } // Placeholder if needed
 
-    fun openNote(noteId: String) {
-        val currentOpen = repository.openNoteIds.value
+    val hasUnsavedChanges: StateFlow<Boolean> = combine(notes, openNoteIds, drafts) { allNotes, openIds, currentDrafts ->
+        openIds.any { id ->
+            val note = allNotes.find { it.id == id }
+            val draft = currentDrafts[id]
+            note != null && draft != null && draft != note.content
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun selectNote(noteId: String) {
+        val currentOpen = openNoteIds.value
         if (!currentOpen.contains(noteId)) {
             repository.saveSession(currentOpen + noteId, noteId)
         } else {
@@ -41,33 +43,22 @@ class WorkspaceViewModel @Inject constructor(
         }
     }
 
-    fun addNote(content: String) {
-        if (content.isBlank()) return
-        
-        viewModelScope.launch {
-            val id = UUID.randomUUID().toString()
-            val newNote = Note(
-                id = id,
-                content = content,
-                timestamp = System.currentTimeMillis(),
-                orderIndex = (notes.value.firstOrNull()?.orderIndex ?: 0.0) + 1.0,
-                version = 1
-            )
-            repository.updateNote(newNote)
-            openNote(id)
-            updateInputBuffer("")
-        }
+    fun closeNote(noteId: String) {
+        val newList = openNoteIds.value.filter { it != noteId }
+        val newSelectedId = if (selectedNoteId.value == noteId) newList.lastOrNull() else selectedNoteId.value
+        repository.saveSession(newList, newSelectedId)
+        repository.clearDraft(noteId)
     }
 
-    fun deleteNote(noteId: String) {
+    fun updateDraft(noteId: String, content: String) {
+        val newDrafts = drafts.value.toMutableMap().apply { put(noteId, content) }
+        repository.saveDrafts(newDrafts)
+    }
+
+    fun updateNoteContent(note: Note, newContent: String) {
         viewModelScope.launch {
-            val currentOpen = repository.openNoteIds.value
-            if (currentOpen.contains(noteId)) {
-                val newList = currentOpen.filter { it != noteId }
-                val newSelected = if (repository.selectedNoteId.value == noteId) newList.lastOrNull() else repository.selectedNoteId.value
-                repository.saveSession(newList, newSelected)
-            }
-            repository.deleteNote(noteId)
+            repository.updateNote(note.copy(content = newContent, timestamp = System.currentTimeMillis()))
+            repository.clearDraft(note.id)
         }
     }
 
@@ -86,8 +77,6 @@ class WorkspaceViewModel @Inject constructor(
             val base64Data = repository.saveImageAsBase64(uri)
             
             if (noteId != null) {
-                // This shouldn't really be called from WorkspaceViewModel for a specific noteId anymore
-                // but keeping it for safety or if WorkspaceScreen ever allows dropping on a card
                 val note = notes.value.find { it.id == noteId } ?: return@launch
                 if (base64Data != null) {
                     val newAsset = Asset(UUID.randomUUID().toString(), noteId, base64Data)
@@ -108,30 +97,25 @@ class WorkspaceViewModel @Inject constructor(
                     assets = asset
                 )
                 repository.updateNote(newNote)
-                openNote(id)
+                repository.saveSession(openNoteIds.value + id, id)
             }
         }
     }
 
-    fun moveNote(fromIndex: Int, toIndex: Int) {
-        val currentNotes = notes.value.toMutableList()
-        if (fromIndex !in currentNotes.indices || toIndex !in currentNotes.indices) return
-        
-        val note = currentNotes.removeAt(fromIndex)
-        currentNotes.add(toIndex, note)
-        
-        val newOrderIndex = if (currentNotes.size == 1) {
-            currentNotes[0].orderIndex
-        } else if (toIndex == 0) {
-            currentNotes[1].orderIndex + 1.0
-        } else if (toIndex == currentNotes.size - 1) {
-            currentNotes[toIndex - 1].orderIndex - 1.0
-        } else {
-            (currentNotes[toIndex - 1].orderIndex + currentNotes[toIndex + 1].orderIndex) / 2.0
-        }
+    fun addNote(content: String) {
+        if (content.isBlank()) return
         
         viewModelScope.launch {
-            repository.updateNoteOrder(note.id, newOrderIndex)
+            val id = UUID.randomUUID().toString()
+            val newNote = Note(
+                id = id,
+                content = content,
+                timestamp = System.currentTimeMillis(),
+                orderIndex = (notes.value.firstOrNull()?.orderIndex ?: 0.0) + 1.0,
+                version = 1
+            )
+            repository.updateNote(newNote)
+            repository.saveSession(openNoteIds.value + id, id)
         }
     }
 }
