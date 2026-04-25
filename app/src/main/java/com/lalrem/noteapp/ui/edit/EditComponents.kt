@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,14 +29,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,7 +78,7 @@ fun BrowserTab(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = if (title.isBlank()) "Empty Note" else title,
+                text = title.ifBlank { "Empty Note" },
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -153,7 +153,7 @@ fun EditNoteScreen(
                             AssetView(
                                 asset = asset,
                                 onRotationUpdate = { assetId, degrees ->
-                                    viewModel.updateAssetRotation(note, assetId, degrees)
+                                    viewModel.onEvent(EditEvent.OnUpdateAssetRotation(note, assetId, degrees))
                                 }
                             )
                         }
@@ -169,9 +169,9 @@ fun EditNoteScreen(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     textStyle = MaterialTheme.typography.headlineSmall,
                     placeholder = { Text("What's on your mind?") },
-                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                    colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent
+                        unfocusedBorderColor = Color.Transparent,
                     )
                 )
             }
@@ -185,7 +185,7 @@ fun AssetView(
     onRotationUpdate: (String, Float) -> Unit
 ) {
     var hudVisible by remember { mutableStateOf(false) }
-    var currentRotation by remember { mutableStateOf(asset.rotationDegrees) }
+    var currentRotation by remember { mutableFloatStateOf(asset.rotationDegrees) }
 
     val imageBitmap = remember(asset.url) {
         if (asset.url.startsWith("data:")) {

@@ -1,45 +1,28 @@
 package com.lalrem.noteapp.ui.workspace
 
 import android.net.Uri
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.LargeTopAppBar
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,10 +31,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -61,11 +42,7 @@ import androidx.navigation.NavController
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkspaceScreen(viewModel: WorkspaceViewModel, navController: NavController) {
-    val notes by viewModel.notes.collectAsState()
-    val openNoteIds by viewModel.openNoteIds.collectAsState()
-    val inputBuffer by viewModel.inputBuffer.collectAsState()
-    var showAddSheet by remember { mutableStateOf(false) }
-    var showSecurityDialog by remember { mutableStateOf(false) }
+    val uiState by viewModel.uiState.collectAsState()
     
     val gridState = rememberLazyGridState()
     
@@ -74,12 +51,12 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, navController: NavController)
     var dropTargetId by remember { mutableStateOf<String?>(null) }
     var isDropAfter by remember { mutableStateOf(false) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
-    var listForDisplay by remember(notes) { mutableStateOf(notes) }
+    var listForDisplay by remember(uiState.notes) { mutableStateOf(uiState.notes) }
     
     // Update display list when notes change from repository
-    LaunchedEffect(notes) {
+    LaunchedEffect(uiState.notes) {
         if (draggedItemId == null) {
-            listForDisplay = notes
+            listForDisplay = uiState.notes
         }
     }
 
@@ -99,7 +76,7 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, navController: NavController)
             },
             floatingActionButton = {
                 LargeFloatingActionButton(
-                    onClick = { showAddSheet = true },
+                    onClick = { viewModel.onEvent(WorkspaceEvent.OnToggleAddSheet(true)) },
                     modifier = Modifier.size(54.dp),
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -113,11 +90,11 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, navController: NavController)
                     .padding(padding)
                     .fillMaxSize()
                     .assetDropTarget(null) { _, uri -> 
-                        viewModel.handleAssetDrop(null, uri)
+                        viewModel.onEvent(WorkspaceEvent.OnAssetDrop(null, uri))
                         navController.navigate("edit")
                     }
             ) {
-                if (notes.isEmpty()) {
+                if (uiState.notes.isEmpty()) {
                     EmptyWorkspacePrompt()
                 } else {
                     LazyVerticalGrid(
@@ -187,8 +164,8 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, navController: NavController)
                                         },
                                         onDragEnd = {
                                             if (dropTargetId != null) {
-                                                val fromIndex = notes.indexOfFirst { it.id == draggedItemId }
-                                                var toIndex = notes.indexOfFirst { it.id == dropTargetId }
+                                                val fromIndex = uiState.notes.indexOfFirst { it.id == draggedItemId }
+                                                var toIndex = uiState.notes.indexOfFirst { it.id == dropTargetId }
                                                 
                                                 if (fromIndex != -1 && toIndex != -1) {
                                                     // Adjust toIndex if drop is after
@@ -197,7 +174,7 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, navController: NavController)
                                                     if (fromIndex < toIndex) toIndex--
                                                     
                                                     if (fromIndex != toIndex) {
-                                                        viewModel.moveNote(fromIndex, toIndex)
+                                                        viewModel.onEvent(WorkspaceEvent.OnMoveNote(fromIndex, toIndex))
                                                     }
                                                 }
                                             }
@@ -213,12 +190,12 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, navController: NavController)
                                     )
                                 },
                                 onTap = { 
-                                    viewModel.openNote(note.id)
+                                    viewModel.onEvent(WorkspaceEvent.OnOpenNote(note.id))
                                     navController.navigate("edit")
                                 },
-                                onDelete = { viewModel.deleteNote(note.id) },
+                                onDelete = { viewModel.onEvent(WorkspaceEvent.OnDeleteNote(note.id)) },
                                 onRotationUpdate = { assetId, degrees -> 
-                                    viewModel.updateAssetRotation(note, assetId, degrees) 
+                                    viewModel.onEvent(WorkspaceEvent.OnUpdateAssetRotation(note, assetId, degrees))
                                 }
                             )
                         }
@@ -226,26 +203,26 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, navController: NavController)
                 }
             }
 
-            if (showAddSheet) {
+            if (uiState.showAddSheet) {
                 ModalBottomSheet(
-                    onDismissRequest = { showAddSheet = false },
+                    onDismissRequest = { viewModel.onEvent(WorkspaceEvent.OnToggleAddSheet(false)) },
                     dragHandle = { BottomSheetDefaults.DragHandle() },
                     containerColor = MaterialTheme.colorScheme.surface
                 ) {
                     NoteSelectorSheet(
-                        availableNotes = notes,
-                        openNoteIds = openNoteIds,
-                        inputBuffer = inputBuffer,
+                        availableNotes = uiState.notes,
+                        openNoteIds = uiState.openNoteIds,
+                        inputBuffer = uiState.inputBuffer,
                         showWorkspaceNotes = false, // Only show "Create New"
-                        onBufferChange = { viewModel.updateInputBuffer(it) },
+                        onBufferChange = { viewModel.onEvent(WorkspaceEvent.OnInputBufferChange(it)) },
                         onNoteSelect = { 
-                            viewModel.openNote(it.id)
-                            showAddSheet = false
+                            viewModel.onEvent(WorkspaceEvent.OnOpenNote(it.id))
+                            viewModel.onEvent(WorkspaceEvent.OnToggleAddSheet(false))
                             navController.navigate("edit")
                         },
                         onAdd = { 
-                            viewModel.addNote(it)
-                            showAddSheet = false 
+                            viewModel.onEvent(WorkspaceEvent.OnAddNote(it))
+                            viewModel.onEvent(WorkspaceEvent.OnToggleAddSheet(false))
                             navController.navigate("edit")
                         }
                     )
@@ -254,13 +231,3 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, navController: NavController)
         }
     }
 }
-
-
-
-
-
-
-
-
-
-

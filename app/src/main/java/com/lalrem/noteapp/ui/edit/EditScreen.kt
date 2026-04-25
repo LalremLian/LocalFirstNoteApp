@@ -44,12 +44,8 @@ import com.lalrem.noteapp.ui.workspace.assetDropTarget
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditScreen(viewModel: EditViewModel, navController: NavController) {
-    val notes by viewModel.notes.collectAsState()
-    val openNoteIds by viewModel.openNoteIds.collectAsState()
-    val selectedNoteId by viewModel.selectedNoteId.collectAsState()
-    val hasUnsavedChanges by viewModel.hasUnsavedChanges.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
     var inputBuffer by remember { mutableStateOf("") }
-    var showAddSheet by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -62,23 +58,23 @@ fun EditScreen(viewModel: EditViewModel, navController: NavController) {
                         modifier = Modifier.weight(1f).height(48.dp).padding(start = 8.dp),
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        items(openNoteIds) { noteId ->
-                            val note = notes.find { it.id == noteId }
+                        items(uiState.openNoteIds) { noteId ->
+                            val note = uiState.notes.find { it.id == noteId }
                             BrowserTab(
                                 title = note?.content?.take(15) ?: "Note",
-                                isSelected = selectedNoteId == noteId,
+                                isSelected = uiState.selectedNoteId == noteId,
                                 onClick = { 
-                                    viewModel.selectNote(noteId) 
+                                    viewModel.onEvent(EditEvent.OnSelectNote(noteId)) 
                                 },
                                 onClose = { 
-                                    viewModel.closeNote(noteId)
+                                    viewModel.onEvent(EditEvent.OnCloseNote(noteId))
                                 }
                             )
                         }
                     }
                     
                     IconButton(
-                        onClick = { showAddSheet = true }, 
+                        onClick = { viewModel.onEvent(EditEvent.OnToggleAddSheet(true)) }, 
                         modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
@@ -95,33 +91,32 @@ fun EditScreen(viewModel: EditViewModel, navController: NavController) {
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .assetDropTarget(selectedNoteId) { id, uri -> 
-                    viewModel.handleAssetDrop(id, uri) 
+                .assetDropTarget(uiState.selectedNoteId) { id, uri -> 
+                    viewModel.onEvent(EditEvent.OnAssetDrop(id, uri)) 
                 }
         ) {
-            if (selectedNoteId != null) {
-                val selectedNote = notes.find { it.id == selectedNoteId }
-                val drafts by viewModel.drafts.collectAsState()
+            if (uiState.selectedNoteId != null) {
+                val selectedNote = uiState.notes.find { it.id == uiState.selectedNoteId }
                 selectedNote?.let { note ->
-                    val initialDraft = drafts[note.id] ?: note.content
+                    val initialDraft = uiState.drafts[note.id] ?: note.content
                     EditNoteScreen(
                         note = note,
                         initialContent = initialDraft,
                         viewModel = viewModel,
                         onDismiss = { 
-                            viewModel.closeNote(note.id)
+                            viewModel.onEvent(EditEvent.OnCloseNote(note.id))
                         },
-                        onContentChange = { viewModel.updateDraft(note.id, it) },
+                        onContentChange = { viewModel.onEvent(EditEvent.OnUpdateDraft(note.id, it)) },
                         onSave = { newContent ->
-                            viewModel.updateNoteContent(note, newContent)
+                            viewModel.onEvent(EditEvent.OnSaveNote(note, newContent))
                         }
                     )
                 }
             } 
         }
         
-        LaunchedEffect(selectedNoteId) {
-            if (selectedNoteId == null) {
+        LaunchedEffect(uiState.selectedNoteId) {
+            if (uiState.selectedNoteId == null) {
                 if (!navController.popBackStack()) {
                     navController.navigate("workspace") {
                         popUpTo("edit") { inclusive = true }
@@ -130,26 +125,26 @@ fun EditScreen(viewModel: EditViewModel, navController: NavController) {
             }
         }
 
-        if (showAddSheet) {
+        if (uiState.showAddSheet) {
             ModalBottomSheet(
-                onDismissRequest = { showAddSheet = false },
+                onDismissRequest = { viewModel.onEvent(EditEvent.OnToggleAddSheet(false)) },
                 dragHandle = { BottomSheetDefaults.DragHandle() },
                 containerColor = MaterialTheme.colorScheme.surface
             ) {
                 NoteSelectorSheet(
-                    availableNotes = notes,
-                    openNoteIds = openNoteIds,
+                    availableNotes = uiState.notes,
+                    openNoteIds = uiState.openNoteIds,
                     inputBuffer = inputBuffer,
                     showWorkspaceNotes = true,
                     onBufferChange = { inputBuffer = it },
                     onNoteSelect = { 
-                        viewModel.selectNote(it.id)
-                        showAddSheet = false
+                        viewModel.onEvent(EditEvent.OnSelectNote(it.id))
+                        viewModel.onEvent(EditEvent.OnToggleAddSheet(false))
                     },
                     onAdd = { 
-                        viewModel.addNote(it) 
+                        viewModel.onEvent(EditEvent.OnAddNote(it)) 
                         inputBuffer = ""
-                        showAddSheet = false 
+                        viewModel.onEvent(EditEvent.OnToggleAddSheet(false))
                     }
                 )
             }

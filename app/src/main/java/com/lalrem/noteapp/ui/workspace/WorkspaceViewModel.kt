@@ -19,20 +19,56 @@ class WorkspaceViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    private val _inputBuffer = savedStateHandle.getStateFlow("input_buffer", "")
-    val inputBuffer = _inputBuffer
+    private val _uiState = MutableStateFlow(WorkspaceUiState())
+    val uiState: StateFlow<WorkspaceUiState> = _uiState.asStateFlow()
 
-    val notes: StateFlow<List<Note>> = repository.notes
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-
-    val openNoteIds: StateFlow<List<String>> = repository.openNoteIds
-    val selectedNoteId: StateFlow<String?> = repository.selectedNoteId
-
-    fun updateInputBuffer(text: String) {
-        savedStateHandle["input_buffer"] = text
+    init {
+        // Observe repository flows and update UI state
+        combine(
+            repository.notes,
+            repository.openNoteIds,
+            repository.selectedNoteId,
+            savedStateHandle.getStateFlow("input_buffer", "")
+        ) { notes, openIds, selectedId, inputBuffer ->
+            _uiState.update { it.copy(
+                notes = notes,
+                openNoteIds = openIds,
+                selectedNoteId = selectedId,
+                inputBuffer = inputBuffer
+            ) }
+        }.launchIn(viewModelScope)
     }
 
-    fun openNote(noteId: String) {
+    fun onEvent(event: WorkspaceEvent) {
+        when (event) {
+            is WorkspaceEvent.OnInputBufferChange -> {
+                savedStateHandle["input_buffer"] = event.text
+            }
+            is WorkspaceEvent.OnOpenNote -> {
+                openNote(event.noteId)
+            }
+            is WorkspaceEvent.OnAddNote -> {
+                addNote(event.content)
+            }
+            is WorkspaceEvent.OnDeleteNote -> {
+                deleteNote(event.noteId)
+            }
+            is WorkspaceEvent.OnMoveNote -> {
+                moveNote(event.fromIndex, event.toIndex)
+            }
+            is WorkspaceEvent.OnAssetDrop -> {
+                handleAssetDrop(event.noteId, event.uri)
+            }
+            is WorkspaceEvent.OnUpdateAssetRotation -> {
+                updateAssetRotation(event.note, event.assetId, event.degrees)
+            }
+            is WorkspaceEvent.OnToggleAddSheet -> {
+                _uiState.update { it.copy(showAddSheet = event.show) }
+            }
+        }
+    }
+
+    private fun openNote(noteId: String) {
         val currentOpen = repository.openNoteIds.value
         if (!currentOpen.contains(noteId)) {
             repository.saveSession(currentOpen + noteId, noteId)
@@ -41,7 +77,7 @@ class WorkspaceViewModel @Inject constructor(
         }
     }
 
-    fun addNote(content: String) {
+    private fun addNote(content: String) {
         if (content.isBlank()) return
         
         viewModelScope.launch {
@@ -50,16 +86,16 @@ class WorkspaceViewModel @Inject constructor(
                 id = id,
                 content = content,
                 timestamp = System.currentTimeMillis(),
-                orderIndex = (notes.value.firstOrNull()?.orderIndex ?: 0.0) + 1.0,
+                orderIndex = (uiState.value.notes.firstOrNull()?.orderIndex ?: 0.0) + 1.0,
                 version = 1
             )
             repository.updateNote(newNote)
             openNote(id)
-            updateInputBuffer("")
+            savedStateHandle["input_buffer"] = ""
         }
     }
 
-    fun deleteNote(noteId: String) {
+    private fun deleteNote(noteId: String) {
         viewModelScope.launch {
             val currentOpen = repository.openNoteIds.value
             if (currentOpen.contains(noteId)) {
@@ -71,7 +107,7 @@ class WorkspaceViewModel @Inject constructor(
         }
     }
 
-    fun updateAssetRotation(note: Note, assetId: String, degrees: Float) {
+    private fun updateAssetRotation(note: Note, assetId: String, degrees: Float) {
         viewModelScope.launch {
             val updatedAssets = note.assets.map {
                 if (it.id == assetId) it.copy(rotationDegrees = degrees) else it
@@ -81,14 +117,12 @@ class WorkspaceViewModel @Inject constructor(
         }
     }
 
-    fun handleAssetDrop(noteId: String?, uri: Uri) {
+    private fun handleAssetDrop(noteId: String?, uri: Uri) {
         viewModelScope.launch {
             val base64Data = repository.saveImageAsBase64(uri)
             
             if (noteId != null) {
-                // This shouldn't really be called from WorkspaceViewModel for a specific noteId anymore
-                // but keeping it for safety or if WorkspaceScreen ever allows dropping on a card
-                val note = notes.value.find { it.id == noteId } ?: return@launch
+                val note = uiState.value.notes.find { it.id == noteId } ?: return@launch
                 if (base64Data != null) {
                     val newAsset = Asset(UUID.randomUUID().toString(), noteId, base64Data)
                     repository.updateNote(note.copy(assets = note.assets + newAsset))
@@ -103,7 +137,7 @@ class WorkspaceViewModel @Inject constructor(
                     id = id,
                     content = if (base64Data != null) "Image Note" else "Failed to load image",
                     timestamp = System.currentTimeMillis(),
-                    orderIndex = (notes.value.firstOrNull()?.orderIndex ?: 0.0) + 1.0,
+                    orderIndex = (uiState.value.notes.firstOrNull()?.orderIndex ?: 0.0) + 1.0,
                     version = 1,
                     assets = asset
                 )
@@ -113,8 +147,8 @@ class WorkspaceViewModel @Inject constructor(
         }
     }
 
-    fun moveNote(fromIndex: Int, toIndex: Int) {
-        val currentNotes = notes.value.toMutableList()
+    private fun moveNote(fromIndex: Int, toIndex: Int) {
+        val currentNotes = uiState.value.notes.toMutableList()
         if (fromIndex !in currentNotes.indices || toIndex !in currentNotes.indices) return
         
         val note = currentNotes.removeAt(fromIndex)
@@ -133,9 +167,5 @@ class WorkspaceViewModel @Inject constructor(
         viewModelScope.launch {
             repository.updateNoteOrder(note.id, newOrderIndex)
         }
-    }
-
-    fun updateProtectionPassword(password: String) {
-        repository.setProtectionPassword(password)
     }
 }
