@@ -1,4 +1,4 @@
-package com.lalrem.noteapp.data.util
+package com.lalrem.noteapp.util
 
 import android.app.Application
 import android.content.Context
@@ -14,17 +14,12 @@ import javax.inject.Singleton
 
 @Singleton
 class ProtectionManager @Inject constructor(
-    private val app: Application
+    app: Application
 ) {
     private val prefs = app.getSharedPreferences("protection_prefs", Context.MODE_PRIVATE)
-    
-    // Salt should ideally be unique per workspace, but for a global sync 
-    // it needs to be consistent across devices.
     private val salt = "note_app_global_salt_v1".toByteArray()
 
     private fun getPassword(): String {
-        // We use a default password so sync works immediately, 
-        // but the user can change it to secure their data.
         return prefs.getString("workspace_password", "default_sync_key") ?: "default_sync_key"
     }
 
@@ -32,11 +27,23 @@ class ProtectionManager @Inject constructor(
         prefs.edit().putString("workspace_password", password).apply()
     }
 
+    private var cachedKey: SecretKeySpec? = null
+    private var lastPassword: String? = null
+
     private fun getSecretKey(): SecretKeySpec {
+        val currentPassword = getPassword()
+        if (cachedKey != null && currentPassword == lastPassword) {
+            return cachedKey!!
+        }
+        
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val spec = PBEKeySpec(getPassword().toCharArray(), salt, 10000, 256)
+        val spec = PBEKeySpec(currentPassword.toCharArray(), salt, 10000, 256)
         val tmp = factory.generateSecret(spec)
-        return SecretKeySpec(tmp.encoded, "AES")
+        val key = SecretKeySpec(tmp.encoded, "AES")
+        
+        cachedKey = key
+        lastPassword = currentPassword
+        return key
     }
 
     fun encrypt(text: String): String {
@@ -76,8 +83,6 @@ class ProtectionManager @Inject constructor(
             val decryptedBytes = cipher.doFinal(encrypted)
             String(decryptedBytes)
         } catch (e: Exception) {
-            // If decryption fails, it might be due to a wrong password 
-            // or the data wasn't encrypted with this method.
             encryptedBase64
         }
     }

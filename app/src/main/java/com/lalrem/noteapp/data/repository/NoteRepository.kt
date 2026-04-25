@@ -8,7 +8,7 @@ import com.lalrem.noteapp.data.local.entity.AssetEntity
 import com.lalrem.noteapp.data.local.entity.NoteEntity
 import com.lalrem.noteapp.data.local.entity.toDomain
 import com.lalrem.noteapp.data.remote.FirebaseSync
-import com.lalrem.noteapp.data.util.ProtectionManager
+import com.lalrem.noteapp.util.ProtectionManager
 import com.lalrem.noteapp.domain.model.Asset
 import com.lalrem.noteapp.domain.model.Note
 import kotlinx.coroutines.CoroutineScope
@@ -17,13 +17,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
-import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
 

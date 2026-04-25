@@ -1,4 +1,4 @@
-package com.lalrem.noteapp.ui.util
+package com.lalrem.noteapp.util.extensions
 
 import android.annotation.SuppressLint
 import androidx.compose.foundation.gestures.awaitEachGesture

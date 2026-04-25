@@ -55,7 +55,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.lalrem.noteapp.domain.model.Asset
 import com.lalrem.noteapp.domain.model.Note
-import com.lalrem.noteapp.ui.util.threeFingerRotation
+import com.lalrem.noteapp.util.extensions.threeFingerRotation
 
 @Composable
 fun BrowserTab(

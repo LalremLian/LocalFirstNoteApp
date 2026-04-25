@@ -22,8 +22,10 @@ class WorkspaceViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(WorkspaceUiState())
     val uiState: StateFlow<WorkspaceUiState> = _uiState.asStateFlow()
 
+    private val _effect = kotlinx.coroutines.channels.Channel<WorkspaceEffect>()
+    val effect = _effect.receiveAsFlow()
+
     init {
-        // Observe repository flows and update UI state
         combine(
             repository.notes,
             repository.openNoteIds,
@@ -45,7 +47,10 @@ class WorkspaceViewModel @Inject constructor(
                 savedStateHandle["input_buffer"] = event.text
             }
             is WorkspaceEvent.OnOpenNote -> {
-                openNote(event.noteId)
+                if (event.noteId.isNotBlank()) {
+                    openNote(event.noteId)
+                    viewModelScope.launch { _effect.send(WorkspaceEffect.NavigateToEdit) }
+                }
             }
             is WorkspaceEvent.OnAddNote -> {
                 addNote(event.content)
@@ -69,6 +74,7 @@ class WorkspaceViewModel @Inject constructor(
     }
 
     private fun openNote(noteId: String) {
+        if (noteId.isBlank()) return
         val currentOpen = repository.openNoteIds.value
         if (!currentOpen.contains(noteId)) {
             repository.saveSession(currentOpen + noteId, noteId)
@@ -143,6 +149,7 @@ class WorkspaceViewModel @Inject constructor(
                 )
                 repository.updateNote(newNote)
                 openNote(id)
+                _effect.send(WorkspaceEffect.NavigateToEdit)
             }
         }
     }
@@ -168,4 +175,8 @@ class WorkspaceViewModel @Inject constructor(
             repository.updateNoteOrder(note.id, newOrderIndex)
         }
     }
+}
+
+sealed class WorkspaceEffect {
+    object NavigateToEdit : WorkspaceEffect()
 }
