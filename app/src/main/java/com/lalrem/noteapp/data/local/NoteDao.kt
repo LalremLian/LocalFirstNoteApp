@@ -42,4 +42,7 @@ interface NoteDao {
 
     @Query("DELETE FROM assets WHERE noteId = :noteId")
     suspend fun deleteAssetsForNote(noteId: String)
+
+    @Query("SELECT * FROM notes")
+    suspend fun getAllNotes(): List<NoteEntity>
 }

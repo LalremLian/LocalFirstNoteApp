@@ -134,4 +134,8 @@ class WorkspaceViewModel @Inject constructor(
             repository.updateNoteOrder(note.id, newOrderIndex)
         }
     }
+
+    fun updateProtectionPassword(password: String) {
+        repository.setProtectionPassword(password)
+    }
 }

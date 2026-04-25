@@ -89,6 +89,12 @@ class NoteRepository @Inject constructor(
         prefs.edit().putString("draft_keys", currentKeys.joinToString(",")).apply()
         _drafts.value = _drafts.value.toMutableMap().apply { remove(noteId) }
     }
+
+    fun setProtectionPassword(password: String) {
+        protectionManager.setPassword(password)
+        // Refresh notes flow by triggering a reload or just let the observer handle it
+        // In a more complex app, we would re-encrypt existing local data here.
+    }
     val notes: Flow<List<Note>> = noteDao.getNotesWithAssets().map { list ->
         list.map { noteWithAssets ->
             val domainAssets = noteWithAssets.assets.map { 
@@ -111,6 +117,18 @@ class NoteRepository @Inject constructor(
     }
 
     private suspend fun reconcile(remoteNotes: List<Note>) {
+        val remoteIds = remoteNotes.map { it.id }.toSet()
+        val localEntities = noteDao.getAllNotes()
+
+        // 1. Handle Deletions: Remove local notes that are no longer in remote
+        // But only if they are not "dirty" (unsynced local changes)
+        localEntities.forEach { local ->
+            if (!remoteIds.contains(local.id) && !local.isDirty) {
+                noteDao.deleteNote(local)
+            }
+        }
+
+        // 2. Handle Additions/Updates
         remoteNotes.forEach { remote ->
             val local = noteDao.getNoteById(remote.id)
             if (local == null) {
